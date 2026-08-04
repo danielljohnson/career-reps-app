@@ -6,7 +6,7 @@ import type { GeneratedRoutine, Survey } from "@/lib/types";
 
 // Default model for routine generation. Override with ANTHROPIC_MODEL if a
 // different Claude model is preferred without a code change.
-const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+const DEFAULT_MODEL = "claude-sonnet-5";
 
 // The routine JSON (10 days, multiple tasks each with a 2-3 sentence "why")
 // runs long, so give the model room to finish without truncating the JSON.
