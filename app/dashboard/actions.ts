@@ -2,19 +2,24 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { generateRoutine, RoutineGenerationError } from "@/lib/anthropic";
 import { loadLatestSurvey } from "@/lib/dashboard";
 
-export interface GenerateRoutineResult {
+export interface EnqueueRoutineJobResult {
   ok: boolean;
   error?: string;
 }
 
-// Generates a routine from the user's latest survey and persists it. Returns a
-// result object (rather than throwing) so the client can show a clear error
-// and offer retry. Nothing is written unless a fully valid routine came back,
-// and the write itself is atomic, so a failure never leaves partial data.
-export async function generateRoutineAction(): Promise<GenerateRoutineResult> {
+// Postgres unique_violation: the partial unique index on routine_jobs rejects
+// a second active (pending/processing) job for the same survey.
+const UNIQUE_VIOLATION = "23505";
+
+// Enqueues a routine-generation job for the user's latest survey and returns
+// immediately — the long Anthropic call runs off-Vercel in an Edge Function
+// triggered by the inserted row, so nothing here blocks. Used by the manual
+// "Generate" fallback CTA, the "Regenerate" action, and the error-state "Try
+// again": each just adds a fresh pending row. Returns a result object rather
+// than throwing so the client can surface a clear error.
+export async function enqueueRoutineJobAction(): Promise<EnqueueRoutineJobResult> {
   const supabase = createClient();
 
   const {
@@ -29,7 +34,7 @@ export async function generateRoutineAction(): Promise<GenerateRoutineResult> {
   try {
     survey = await loadLatestSurvey(supabase, user.id);
   } catch (cause) {
-    console.error("Loading survey for generation failed", cause);
+    console.error("Loading survey for enqueue failed", cause);
     return { ok: false, error: "Could not load your survey. Please try again." };
   }
 
@@ -40,33 +45,24 @@ export async function generateRoutineAction(): Promise<GenerateRoutineResult> {
     };
   }
 
-  let routine;
-  try {
-    routine = await generateRoutine(survey);
-  } catch (cause) {
-    if (cause instanceof RoutineGenerationError) {
-      return { ok: false, error: cause.message };
+  // Insert is RLS-checked against the "insertable by owner" policy, so a user
+  // can only ever enqueue against their own survey.
+  const { error } = await supabase
+    .from("routine_jobs")
+    .insert({ user_id: user.id, survey_id: survey.id, status: "pending" });
+
+  if (error) {
+    // A concurrent active job already exists (double-click, second tab): that
+    // job will still generate the routine, so treat it as success rather than
+    // surfacing a confusing error.
+    if (error.code === UNIQUE_VIOLATION) {
+      revalidatePath("/dashboard");
+      return { ok: true };
     }
-    console.error("Routine generation failed", cause);
+    console.error("Enqueuing routine job failed", error);
     return {
       ok: false,
-      error: "Something went wrong building your routine. Please try again.",
-    };
-  }
-
-  // Atomic replace: the RPC clears any prior routine and writes the new one in
-  // a single transaction, checked against RLS as the calling user.
-  const { error: rpcError } = await supabase.rpc("replace_routine", {
-    p_survey_id: survey.id,
-    p_summary: routine.summary,
-    p_days: routine.days,
-  });
-
-  if (rpcError) {
-    console.error("Persisting routine failed", rpcError);
-    return {
-      ok: false,
-      error: "We built your routine but could not save it. Please try again.",
+      error: "Could not start routine generation. Please try again.",
     };
   }
 

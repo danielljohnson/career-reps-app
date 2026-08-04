@@ -63,6 +63,28 @@ export interface Routine {
   days: RoutineDay[];
 }
 
+// Lifecycle of an async routine-generation job (mirrors the routine_jobs
+// table's status check): a survey submit enqueues 'pending', the Edge Function
+// claims it as 'processing', then writes a terminal 'complete' or 'error'.
+export type RoutineJobStatus =
+  | "pending"
+  | "processing"
+  | "complete"
+  | "error";
+
+// A persisted routine_jobs row: the durable orchestration record the dashboard
+// reads to resolve its state on every load, independent of any live socket.
+export interface RoutineJob {
+  id: string;
+  userId: string;
+  surveyId: string;
+  status: RoutineJobStatus;
+  errorMessage: string | null;
+  routineId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // The JSON shape the Anthropic API returns, matching the spec OUTPUT FORMAT
 // exactly (snake_case, fitness_category enum). Validate before trusting it.
 export interface GeneratedTask {

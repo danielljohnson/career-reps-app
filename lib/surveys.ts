@@ -176,6 +176,28 @@ export function surveyRowToSurvey(row: SurveyRow): Survey {
   };
 }
 
+// Maps a validated SurveyInput to the argument list of the
+// submit_survey_and_enqueue_job RPC, which atomically inserts the survey and
+// enqueues a routine_jobs row. Arg names mirror the function's parameters
+// exactly; keep in sync with the routine_jobs migration.
+export function surveyInputToEnqueueArgs(input: SurveyInput) {
+  return {
+    p_career_goal: input.careerGoal,
+    p_timeline: input.timeline,
+    p_minutes_per_weekday: input.minutesPerWeekday,
+    p_current_situation: input.currentSituation,
+    p_additional_context: input.additionalContext,
+    p_goal_clarity_score: input.ratings.goal_clarity.score,
+    p_goal_clarity_why: input.ratings.goal_clarity.why,
+    p_network_strength_score: input.ratings.network_strength.score,
+    p_network_strength_why: input.ratings.network_strength.why,
+    p_impact_visibility_score: input.ratings.impact_visibility.score,
+    p_impact_visibility_why: input.ratings.impact_visibility.why,
+    p_industry_awareness_score: input.ratings.industry_awareness.score,
+    p_industry_awareness_why: input.ratings.industry_awareness.why,
+  };
+}
+
 // Maps a validated SurveyInput to the surveys table's snake_case columns.
 export function surveyInputToRow(userId: string, input: SurveyInput) {
   return {
