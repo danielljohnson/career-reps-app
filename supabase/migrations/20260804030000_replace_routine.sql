@@ -15,6 +15,11 @@ create function public.replace_routine(
 )
 returns uuid
 language plpgsql
+-- Explicit SECURITY INVOKER keeps RLS enforcement as the calling user, and an
+-- empty search_path blocks search_path-hijacking; every object below is already
+-- schema-qualified (matches handle_new_user in the init migration).
+security invoker
+set search_path = ''
 as $$
 declare
   v_user_id uuid := auth.uid();
@@ -76,4 +81,11 @@ begin
   return v_routine_id;
 end;
 $$;
+
+-- Enforce "one routine per survey" at the database level. The delete-then-insert
+-- above takes no lock when there is no prior routine, so two concurrent
+-- first-time generations could otherwise both insert and stack duplicates; this
+-- constraint makes the losing INSERT fail and roll back its whole transaction.
+create unique index if not exists routines_survey_user_uniq
+  on public.routines (survey_id, user_id);
 

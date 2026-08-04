@@ -53,7 +53,10 @@ function extractText(message: Anthropic.Message): string {
 export async function generateRoutine(
   survey: Survey,
 ): Promise<GeneratedRoutine> {
-  const client = new Anthropic({ apiKey: getApiKey() });
+  // Bound the call well under the route's maxDuration so a hung request fails
+  // fast and surfaces a retryable error, rather than riding the SDK's 10-minute
+  // default while the user stares at a disabled button.
+  const client = new Anthropic({ apiKey: getApiKey(), timeout: 90_000 });
   const userPrompt = buildRoutinePrompt(survey);
 
   let lastError = "Unknown error";

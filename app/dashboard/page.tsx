@@ -6,6 +6,11 @@ import { FITNESS_CATEGORY_LABELS } from "@/lib/surveys";
 import type { Routine } from "@/lib/types";
 import { GenerateRoutineButton } from "./generate-routine-button";
 
+// Routine generation runs inside a server action triggered from this route, so
+// the budget lives on the route segment. Keep it aligned with the Anthropic
+// client timeout (90s) so the function never outlives the API call it awaits.
+export const maxDuration = 90;
+
 // The dashboard is the home base after login. For this PR it wires up routine
 // generation and renders the stored routine read-only; the day-by-day task
 // tracker (mark complete / undo) lands in a later PR.
