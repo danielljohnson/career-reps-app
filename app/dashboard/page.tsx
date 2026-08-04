@@ -8,10 +8,13 @@ import { GenerateRoutineButton } from "./generate-routine-button";
 import { TaskItem } from "./task-item";
 
 // Routine generation runs inside a server action triggered from this route, so
-// the budget lives on the route segment. It must cover the whole retry loop:
-// MAX_ATTEMPTS (2) * REQUEST_TIMEOUT_MS (45s) in lib/anthropic.ts = 90s. Keep
-// these in lockstep so a retried generation can't outlive the function.
-export const maxDuration = 90;
+// the budget lives on the route segment. Production is on the Vercel Free/
+// Hobby plan, which hard-caps function execution at 60s (it silently clamps
+// any higher maxDuration down to 60 anyway) so this must not exceed that. A
+// single generation attempt is sized to fit: MAX_ATTEMPTS (1) *
+// REQUEST_TIMEOUT_MS (50s) in lib/anthropic.ts, leaving ~10s of headroom for
+// function overhead. Keep these in lockstep.
+export const maxDuration = 60;
 
 // The dashboard is the home base after login: it wires up routine generation
 // and renders the stored routine's current day plus what's upcoming, with

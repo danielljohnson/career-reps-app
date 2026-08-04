@@ -166,10 +166,26 @@ describe("validateGeneratedRoutine", () => {
 });
 
 describe("parseRoutineResponse", () => {
+  it("parses a plain JSON response with no wrapping", () => {
+    const result = parseRoutineResponse(JSON.stringify(validRoutine()));
+    expect("data" in result).toBe(true);
+  });
+
   it("parses a valid routine wrapped in prose", () => {
     const text = `Here's your program:\n${JSON.stringify(validRoutine())}\nGo get it.`;
     const result = parseRoutineResponse(text);
     expect("data" in result).toBe(true);
+  });
+
+  it("parses a valid routine wrapped in a markdown ```json fence", () => {
+    // Claude Sonnet 5 wraps its JSON output in a markdown code fence; a single
+    // generation attempt (no retry budget on the Free plan) must still parse.
+    const text = "```json\n" + JSON.stringify(validRoutine()) + "\n```";
+    const result = parseRoutineResponse(text);
+    expect("data" in result).toBe(true);
+    if ("data" in result) {
+      expect(result.data.days).toHaveLength(ROUTINE_DAY_COUNT);
+    }
   });
 
   it("errors when no JSON object is present", () => {
