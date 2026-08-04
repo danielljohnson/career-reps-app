@@ -57,7 +57,10 @@ export function TaskItem({ task }: TaskItemProps) {
       </div>
       <p className="text-xs text-muted-foreground">{task.why}</p>
       {error && (
-        <p role="alert" className="text-xs text-muted-foreground">
+        <p
+          role="alert"
+          className="rounded-md border border-border bg-muted px-2 py-1 text-xs"
+        >
           {error}
         </p>
       )}
