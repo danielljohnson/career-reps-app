@@ -4,6 +4,7 @@ import {
   FITNESS_CATEGORY_LABELS,
 } from "@/lib/surveys";
 import { submitSurvey } from "./actions";
+import { ScoreSlider } from "./score-slider";
 
 interface SurveyPageProps {
   searchParams: { error?: string };
@@ -124,24 +125,10 @@ export default function SurveyPage({ searchParams }: SurveyPageProps) {
 
           {FITNESS_CATEGORIES.map((category) => (
             <div key={category} className="flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-4">
-                <label
-                  htmlFor={`${category}_score`}
-                  className="text-sm font-medium"
-                >
-                  {FITNESS_CATEGORY_LABELS[category]}
-                </label>
-                <input
-                  id={`${category}_score`}
-                  name={`${category}_score`}
-                  type="number"
-                  required
-                  min={1}
-                  max={10}
-                  step={1}
-                  className="w-20 rounded-md border border-border px-3 py-2 text-sm"
-                />
-              </div>
+              <ScoreSlider
+                name={`${category}_score`}
+                label={FITNESS_CATEGORY_LABELS[category]}
+              />
               <textarea
                 name={`${category}_why`}
                 rows={2}
