@@ -6,6 +6,8 @@ import type {
   FitnessCategory,
   Routine,
   RoutineDay,
+  RoutineJob,
+  RoutineJobStatus,
   RoutineStatus,
   Survey,
   Task,
@@ -38,6 +40,30 @@ interface RoutineRow {
   status: string;
   created_at: string;
   routine_days: RoutineDayRow[];
+}
+
+interface RoutineJobRow {
+  id: string;
+  user_id: string;
+  survey_id: string;
+  status: string;
+  error_message: string | null;
+  routine_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function mapRoutineJob(row: RoutineJobRow): RoutineJob {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    surveyId: row.survey_id,
+    status: row.status as RoutineJobStatus,
+    errorMessage: row.error_message,
+    routineId: row.routine_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 function mapTask(row: TaskRow): Task {
@@ -113,5 +139,25 @@ export async function loadLatestRoutine(
 
   if (error) throw error;
   return data ? mapRoutine(data as unknown as RoutineRow) : null;
+}
+
+// Loads the user's most recent routine job, or null if they've never enqueued
+// one. A user has one active survey for MVP and replacing that survey cascades
+// away its old jobs, so the latest job for the user is the latest job for the
+// current survey — the dashboard reads this on every load to resolve state.
+export async function loadLatestRoutineJob(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<RoutineJob | null> {
+  const { data, error } = await supabase
+    .from("routine_jobs")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapRoutineJob(data as RoutineJobRow) : null;
 }
 

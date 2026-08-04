@@ -1,24 +1,22 @@
 import Link from "next/link";
 import { logout } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/server";
-import { loadLatestRoutine, loadLatestSurvey } from "@/lib/dashboard";
+import {
+  loadLatestRoutine,
+  loadLatestRoutineJob,
+  loadLatestSurvey,
+} from "@/lib/dashboard";
+import { resolveDashboardState } from "@/lib/dashboard-state";
 import { getRoutineSchedule } from "@/lib/routine-schedule";
-import type { Routine, RoutineDay } from "@/lib/types";
+import type { Routine, RoutineDay, RoutineJob } from "@/lib/types";
 import { GenerateRoutineButton } from "./generate-routine-button";
+import { RoutineJobStatus } from "./routine-job-status";
 import { TaskItem } from "./task-item";
 
-// Routine generation runs inside a server action triggered from this route, so
-// the budget lives on the route segment. Production is on the Vercel Free/
-// Hobby plan, which hard-caps function execution at 60s (it silently clamps
-// any higher maxDuration down to 60 anyway) so this must not exceed that. A
-// single generation attempt is sized to fit: MAX_ATTEMPTS (1) *
-// REQUEST_TIMEOUT_MS (50s) in lib/anthropic.ts, leaving ~10s of headroom for
-// function overhead. Keep these in lockstep.
-export const maxDuration = 60;
-
-// The dashboard is the home base after login: it wires up routine generation
-// and renders the stored routine's current day plus what's upcoming, with
-// tasks the user can mark complete or undo.
+// The dashboard is the home base after login. Generation now runs off-Vercel
+// in an Edge Function, so this route no longer hosts a long-running server
+// action and needs no raised maxDuration — every request just reads the
+// durable survey/job/routine rows and resolves which state to render.
 export default async function DashboardPage() {
   const supabase = createClient();
 
@@ -42,10 +40,17 @@ export default async function DashboardPage() {
     );
   }
 
-  const [survey, routine] = await Promise.all([
+  // Read all three durable inputs on every load, then resolve exactly one
+  // state from them. Because this is a fresh server read each time (not a live
+  // subscription), a user who closed the tab mid-generation — or opens the
+  // dashboard on another device — always sees the correct current state.
+  const [survey, job, routine] = await Promise.all([
     loadLatestSurvey(supabase, user.id),
+    loadLatestRoutineJob(supabase, user.id),
     loadLatestRoutine(supabase, user.id),
   ]);
+
+  const state = resolveDashboardState({ survey, job, routine });
 
   return (
     <Shell>
@@ -61,15 +66,32 @@ export default async function DashboardPage() {
         </form>
       </header>
 
-      {!survey ? (
-        <EmptySurveyState />
-      ) : routine ? (
-        <RoutineView routine={routine} />
-      ) : (
-        <GenerateState />
-      )}
+      {renderState(state)}
     </Shell>
   );
+}
+
+// Maps the resolved dashboard state to its view. Pending/processing mount the
+// live RoutineJobStatus (Realtime + safety refresh); everything else is a
+// static server render.
+function renderState(
+  state: ReturnType<typeof resolveDashboardState>,
+): React.ReactNode {
+  switch (state.kind) {
+    case "no-survey":
+      return <EmptySurveyState />;
+    case "no-job":
+      return <GenerateState />;
+    case "pending":
+    case "processing":
+      return (
+        <RoutineJobStatus jobId={state.job.id} initialStatus={state.kind} />
+      );
+    case "error":
+      return <ErrorState job={state.job} />;
+    case "complete":
+      return <RoutineView routine={state.routine} />;
+  }
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -112,6 +134,24 @@ function GenerateState() {
         reps tuned to your weakest fitness categories.
       </p>
       <GenerateRoutineButton variant="generate" />
+    </section>
+  );
+}
+
+// Generation failed: surface the job's error message (with a generic fallback
+// so we never render an empty banner) and let the user enqueue a fresh job.
+function ErrorState({ job }: { job: RoutineJob }) {
+  return (
+    <section className="flex flex-col items-center gap-4 rounded-lg border border-border p-8 text-center">
+      <h2 className="text-lg font-medium">We couldn&rsquo;t build your routine</h2>
+      <p
+        role="alert"
+        className="rounded-md border border-border bg-muted px-4 py-3 text-sm"
+      >
+        {job.errorMessage ??
+          "Something went wrong building your routine. Please try again."}
+      </p>
+      <GenerateRoutineButton variant="retry" />
     </section>
   );
 }

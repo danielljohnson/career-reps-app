@@ -1,23 +1,23 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { generateRoutineAction } from "./actions";
+import { enqueueRoutineJobAction } from "./actions";
 
 interface GenerateRoutineButtonProps {
-  // Distinguishes the first-time "generate" CTA from a "regenerate" action so
-  // the label and confirmation copy match what the user is about to do.
-  variant: "generate" | "regenerate";
+  // Distinguishes the first-time "generate" CTA from a "regenerate" action and
+  // the error-state "retry" so the label matches what the user is about to do.
+  variant: "generate" | "regenerate" | "retry";
 }
 
+// Enqueuing is near-instant, so there's no long "building" spinner on the
+// button itself — on success the server revalidates and the dashboard swaps
+// to the pending state (RoutineJobStatus), which owns the "Building…" copy and
+// the live update. The button only needs an in-flight label and error
+// surfacing for the brief enqueue round trip.
 const COPY = {
-  generate: {
-    idle: "Generate my 10-day routine",
-    pending: "Building your routine\u2026",
-  },
-  regenerate: {
-    idle: "Regenerate routine",
-    pending: "Rebuilding your routine\u2026",
-  },
+  generate: { idle: "Generate my 10-day routine", pending: "Starting\u2026" },
+  regenerate: { idle: "Regenerate routine", pending: "Starting\u2026" },
+  retry: { idle: "Try again", pending: "Starting\u2026" },
 } as const;
 
 export function GenerateRoutineButton({ variant }: GenerateRoutineButtonProps) {
@@ -27,9 +27,10 @@ export function GenerateRoutineButton({ variant }: GenerateRoutineButtonProps) {
   function handleClick() {
     setError(null);
     startTransition(async () => {
-      const result = await generateRoutineAction();
+      const result = await enqueueRoutineJobAction();
       // On success the server revalidates /dashboard and this view is replaced
-      // by the rendered routine, so we only need to surface failures here.
+      // by the pending "Building your routine…" state, so we only surface
+      // failures here.
       if (!result.ok) {
         setError(result.error ?? "Something went wrong. Please try again.");
       }
@@ -49,13 +50,6 @@ export function GenerateRoutineButton({ variant }: GenerateRoutineButtonProps) {
       >
         {isPending ? copy.pending : copy.idle}
       </button>
-
-      {isPending && (
-        <p className="text-xs text-muted-foreground">
-          Your coach is programming your two-week training block. This can take
-          up to a minute.
-        </p>
-      )}
 
       {error && (
         <p

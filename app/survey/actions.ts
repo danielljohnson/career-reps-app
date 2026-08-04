@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { parseSurveyForm, surveyInputToRow } from "@/lib/surveys";
+import { parseSurveyForm, surveyInputToEnqueueArgs } from "@/lib/surveys";
 
 const SAVE_ERROR = "Could not save your survey. Please try again.";
 
@@ -22,23 +22,19 @@ export async function submitSurvey(formData: FormData) {
     redirect(`/survey?error=${encodeURIComponent(result.error)}`);
   }
 
-  // A user has one active survey for MVP: delete any prior survey first so a
-  // failed insert below never leaves two rows behind. If the insert then
-  // fails, the user lands back on an empty form and simply resubmits.
-  const { error: deleteError } = await supabase
-    .from("surveys")
-    .delete()
-    .eq("user_id", user.id);
+  // Instant-return enqueue: one atomic RPC replaces the user's prior survey
+  // (MVP keeps a single active survey), inserts the new one, and enqueues a
+  // pending routine_jobs row — all RLS-checked as the calling user. Generation
+  // itself runs off-Vercel in an Edge Function, so we never await it here; the
+  // user is redirected to the dashboard immediately and the durable job row
+  // reconstructs "Building your routine…" state on any later load.
+  const { error: enqueueError } = await supabase.rpc(
+    "submit_survey_and_enqueue_job",
+    surveyInputToEnqueueArgs(result.data),
+  );
 
-  if (deleteError) {
-    redirect(`/survey?error=${encodeURIComponent(SAVE_ERROR)}`);
-  }
-
-  const { error: insertError } = await supabase
-    .from("surveys")
-    .insert(surveyInputToRow(user.id, result.data));
-
-  if (insertError) {
+  if (enqueueError) {
+    console.error("Submitting survey and enqueuing job failed", enqueueError);
     redirect(`/survey?error=${encodeURIComponent(SAVE_ERROR)}`);
   }
 
