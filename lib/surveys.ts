@@ -5,6 +5,7 @@
 import {
   FITNESS_CATEGORIES,
   type FitnessCategory,
+  type Survey,
   type SurveyInput,
 } from "@/lib/types";
 
@@ -118,6 +119,59 @@ export function parseSurveyForm(formData: FormData): SurveyParseResult {
       currentSituation,
       additionalContext: readOptionalText(formData, "additional_context"),
       ratings,
+    },
+  };
+}
+
+// The shape of a surveys table row as returned by Supabase (snake_case).
+export interface SurveyRow {
+  id: string;
+  user_id: string;
+  career_goal: string;
+  timeline: string;
+  minutes_per_weekday: number;
+  current_situation: string;
+  additional_context: string | null;
+  goal_clarity_score: number;
+  goal_clarity_why: string | null;
+  network_strength_score: number;
+  network_strength_why: string | null;
+  impact_visibility_score: number;
+  impact_visibility_why: string | null;
+  industry_awareness_score: number;
+  industry_awareness_why: string | null;
+  created_at: string;
+}
+
+// Maps a persisted surveys row back to the camelCase domain type. Used by
+// routine generation, which reads the latest survey to build the prompt.
+export function surveyRowToSurvey(row: SurveyRow): Survey {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    careerGoal: row.career_goal,
+    timeline: row.timeline,
+    minutesPerWeekday: row.minutes_per_weekday,
+    currentSituation: row.current_situation,
+    additionalContext: row.additional_context,
+    createdAt: row.created_at,
+    ratings: {
+      goal_clarity: {
+        score: row.goal_clarity_score,
+        why: row.goal_clarity_why,
+      },
+      network_strength: {
+        score: row.network_strength_score,
+        why: row.network_strength_why,
+      },
+      impact_visibility: {
+        score: row.impact_visibility_score,
+        why: row.impact_visibility_why,
+      },
+      industry_awareness: {
+        score: row.industry_awareness_score,
+        why: row.industry_awareness_why,
+      },
     },
   };
 }
