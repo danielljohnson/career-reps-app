@@ -7,8 +7,9 @@ import type { Routine } from "@/lib/types";
 import { GenerateRoutineButton } from "./generate-routine-button";
 
 // Routine generation runs inside a server action triggered from this route, so
-// the budget lives on the route segment. Keep it aligned with the Anthropic
-// client timeout (90s) so the function never outlives the API call it awaits.
+// the budget lives on the route segment. It must cover the whole retry loop:
+// MAX_ATTEMPTS (2) * REQUEST_TIMEOUT_MS (45s) in lib/anthropic.ts = 90s. Keep
+// these in lockstep so a retried generation can't outlive the function.
 export const maxDuration = 90;
 
 // The dashboard is the home base after login. For this PR it wires up routine

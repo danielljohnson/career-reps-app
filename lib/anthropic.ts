@@ -17,6 +17,13 @@ const MAX_TOKENS = 8000;
 // hammering the API on a persistent failure.
 const MAX_ATTEMPTS = 2;
 
+// Per-request timeout, sized so every retry fits inside the dashboard route's
+// maxDuration budget: MAX_ATTEMPTS * REQUEST_TIMEOUT_MS = 90s = the route's
+// maxDuration. Without this cap a single hung request rides the SDK's 10-minute
+// default, and two attempts could blow past the serverless budget and kill the
+// function mid-persist. Keep this in lockstep with maxDuration in the route.
+const REQUEST_TIMEOUT_MS = 45_000;
+
 // Thrown when generation fails after retries. The message is safe to surface
 // to the user; the cause carries detail for server logs.
 export class RoutineGenerationError extends Error {
@@ -53,10 +60,12 @@ function extractText(message: Anthropic.Message): string {
 export async function generateRoutine(
   survey: Survey,
 ): Promise<GeneratedRoutine> {
-  // Bound the call well under the route's maxDuration so a hung request fails
-  // fast and surfaces a retryable error, rather than riding the SDK's 10-minute
-  // default while the user stares at a disabled button.
-  const client = new Anthropic({ apiKey: getApiKey(), timeout: 90_000 });
+  // Per-request timeout (applies to each attempt) keeps a hung request from
+  // riding the SDK's 10-minute default; sized so both attempts fit the route.
+  const client = new Anthropic({
+    apiKey: getApiKey(),
+    timeout: REQUEST_TIMEOUT_MS,
+  });
   const userPrompt = buildRoutinePrompt(survey);
 
   let lastError = "Unknown error";
