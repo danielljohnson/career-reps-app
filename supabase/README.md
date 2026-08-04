@@ -50,6 +50,55 @@ user can never forge or vandalize another user's job. `routine_jobs` is in the
 `supabase_realtime` publication so the dashboard can subscribe to its own job's
 status transitions live.
 
+## Background worker (Edge Function + webhook)
+
+Routine generation runs in the `generate-routine` Supabase Edge Function
+(`functions/generate-routine/`, Deno), off Vercel, so it is not bound by the
+Vercel Free plan's 60s function limit. Flow:
+
+1. Survey submit calls `submit_survey_and_enqueue_job`, inserting a `pending`
+   `routine_jobs` row and returning instantly.
+2. An `after insert` trigger on `routine_jobs`
+   (`invoke_generate_routine`, a pg_net Database Webhook) POSTs the new row to
+   the function. It fires from the database, so it does not depend on the
+   browser or the Vercel request staying alive.
+3. The function claims the job (`pending` -> `processing`, idempotent against
+   at-least-once webhook redelivery), loads the survey, calls Anthropic, and
+   writes the result back with `complete_routine_job` (or `fail_routine_job`
+   on any error). It never leaves a job stuck.
+
+The prompt + validation logic is a hand-ported Deno copy of `lib/routines.ts`
+in `functions/generate-routine/_shared/routines.ts` (Edge Functions do not
+share the Next.js build). Both files carry a `keep in sync` comment; changes
+to the prompt or schema validation MUST be mirrored across the two.
+
+### Deploy the function
+
+The function and its secret are a **separate deploy step** from `db push` and
+from Vercel; skipping them leaves enqueued jobs stuck on "Building...".
+
+```bash
+# One-time: authenticate the CLI (needs a Supabase personal access token) and
+# link the repo to the project.
+supabase login   # or: export SUPABASE_ACCESS_TOKEN=...
+supabase link --project-ref qgvctwhrzsmhcntzgupd
+
+# The function has its own secret store, separate from Vercel env vars.
+supabase secrets set ANTHROPIC_API_KEY=<your-anthropic-key>
+
+# Deploy. verify_jwt=false (config.toml) since the webhook, not a user, calls it.
+supabase functions deploy generate-routine
+```
+
+The webhook trigger reads the service-role key it sends in the `Authorization`
+header from Supabase Vault, so the key is never committed. Set it once against
+the linked project (SQL editor or psql):
+
+```sql
+select vault.create_secret(
+  '<SUPABASE_SERVICE_ROLE_KEY>', 'generate_routine_service_key');
+```
+
 ## Apply migrations locally
 
 Install the [Supabase CLI](https://supabase.com/docs/guides/cli), then:

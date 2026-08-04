@@ -19,6 +19,9 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  // supabase/functions is Deno, not Next.js: it uses npm:/esm.sh imports, .ts
+  // import specifiers, and the Deno global, none of which the Next.js build
+  // (tsc + next lint) can resolve. It has its own runtime and is excluded here.
+  "exclude": ["node_modules", "supabase"]
 }
 
