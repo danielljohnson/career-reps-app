@@ -1,0 +1,13 @@
+# Supabase local dev + function config for Career Reps.
+# Full reference: https://supabase.com/docs/guides/cli/config
+
+project_id = "career-reps-app"
+
+[functions.generate-routine]
+# The async routine-generation background worker. Invoked by a Database
+# Webhook (AFTER INSERT on public.routine_jobs), NOT by a browser: it
+# authenticates with the service-role key in the Authorization header, not a
+# user JWT, so JWT verification is disabled. The function itself uses the
+# auto-injected SUPABASE_SERVICE_ROLE_KEY to write results back.
+verify_jwt = false
+
