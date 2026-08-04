@@ -2,9 +2,10 @@ import Link from "next/link";
 import { logout } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/server";
 import { loadLatestRoutine, loadLatestSurvey } from "@/lib/dashboard";
-import { FITNESS_CATEGORY_LABELS } from "@/lib/surveys";
-import type { Routine } from "@/lib/types";
+import { getRoutineSchedule } from "@/lib/routine-schedule";
+import type { Routine, RoutineDay } from "@/lib/types";
 import { GenerateRoutineButton } from "./generate-routine-button";
+import { TaskItem } from "./task-item";
 
 // Routine generation runs inside a server action triggered from this route, so
 // the budget lives on the route segment. It must cover the whole retry loop:
@@ -12,9 +13,9 @@ import { GenerateRoutineButton } from "./generate-routine-button";
 // these in lockstep so a retried generation can't outlive the function.
 export const maxDuration = 90;
 
-// The dashboard is the home base after login. For this PR it wires up routine
-// generation and renders the stored routine read-only; the day-by-day task
-// tracker (mark complete / undo) lands in a later PR.
+// The dashboard is the home base after login: it wires up routine generation
+// and renders the stored routine's current day plus what's upcoming, with
+// tasks the user can mark complete or undo.
 export default async function DashboardPage() {
   const supabase = createClient();
 
@@ -112,8 +113,19 @@ function GenerateState() {
   );
 }
 
-// Routine ready: show the coaching summary and every day's tasks read-only.
+// Routine ready: show the coaching summary, today's tasks, and what's
+// upcoming. "Today" is derived from the routine's creation date rather than
+// stored, per the spec's "keep it simple" note; see lib/routine-schedule.ts
+// for the exact rule.
 function RoutineView({ routine }: { routine: Routine }) {
+  const schedule = getRoutineSchedule(routine.createdAt, routine.days.length);
+  const todayDay = routine.days.find(
+    (day) => day.dayNumber === schedule.currentDayNumber,
+  );
+  const upcomingDays = routine.days.filter(
+    (day) => day.dayNumber > schedule.currentDayNumber,
+  );
+
   return (
     <section className="flex flex-col gap-6">
       <div className="rounded-lg border border-border bg-muted p-6">
@@ -121,38 +133,43 @@ function RoutineView({ routine }: { routine: Routine }) {
         <p className="mt-2 text-sm">{routine.summary}</p>
       </div>
 
-      <ol className="flex flex-col gap-4">
-        {routine.days.map((day) => (
-          <li
-            key={day.id}
-            className="flex flex-col gap-3 rounded-lg border border-border p-5"
-          >
-            <div className="flex items-baseline justify-between gap-4">
-              <h3 className="text-sm font-semibold">
-                Day {day.dayNumber}
-                {day.dayNumber === 1 ? " · Today" : ""}
-              </h3>
-              <span className="text-sm text-muted-foreground">
-                {day.summary}
-              </span>
-            </div>
+      {schedule.isComplete && (
+        <p className="rounded-md border border-border p-4 text-sm text-muted-foreground">
+          You&rsquo;ve completed your ten-day training block. Regenerate below
+          to program the next one.
+        </p>
+      )}
 
-            <ul className="flex flex-col gap-3">
-              {day.tasks.map((task) => (
-                <li key={task.id} className="flex flex-col gap-1">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium">{task.task}</p>
-                    <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
-                      {FITNESS_CATEGORY_LABELS[task.fitnessCategory]}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{task.why}</p>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ol>
+      {todayDay && (
+        <div className="flex flex-col gap-3 rounded-lg border border-border p-5">
+          <div className="flex items-baseline justify-between gap-4">
+            <h3 className="text-sm font-semibold">
+              Day {todayDay.dayNumber} · Today
+            </h3>
+            <span className="text-sm text-muted-foreground">
+              {todayDay.summary}
+            </span>
+          </div>
+          <ul className="flex flex-col gap-3">
+            {todayDay.tasks.map((task) => (
+              <TaskItem key={task.id} task={task} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {upcomingDays.length > 0 && (
+        <div className="flex flex-col gap-4">
+          <h3 className="text-sm font-semibold text-muted-foreground">
+            Upcoming
+          </h3>
+          <ol className="flex flex-col gap-4">
+            {upcomingDays.map((day) => (
+              <UpcomingDayCard key={day.id} day={day} />
+            ))}
+          </ol>
+        </div>
+      )}
 
       <div className="flex flex-col items-center gap-2 border-t border-border pt-6">
         <p className="text-xs text-muted-foreground">
@@ -161,6 +178,22 @@ function RoutineView({ routine }: { routine: Routine }) {
         <GenerateRoutineButton variant="regenerate" />
       </div>
     </section>
+  );
+}
+
+function UpcomingDayCard({ day }: { day: RoutineDay }) {
+  return (
+    <li className="flex flex-col gap-3 rounded-lg border border-border p-5">
+      <div className="flex items-baseline justify-between gap-4">
+        <h3 className="text-sm font-semibold">Day {day.dayNumber}</h3>
+        <span className="text-sm text-muted-foreground">{day.summary}</span>
+      </div>
+      <ul className="flex flex-col gap-3">
+        {day.tasks.map((task) => (
+          <TaskItem key={task.id} task={task} />
+        ))}
+      </ul>
+    </li>
   );
 }
 

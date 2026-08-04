@@ -74,3 +74,47 @@ export async function generateRoutineAction(): Promise<GenerateRoutineResult> {
   return { ok: true };
 }
 
+export interface ToggleTaskResult {
+  ok: boolean;
+  error?: string;
+}
+
+// Toggles a single task's completed_at. The update itself carries no explicit
+// ownership filter because the "Tasks are updatable by owner" RLS policy
+// already scopes it (via routine_days -> routines -> user_id): a caller can
+// never touch a task they don't own. Selecting the updated row back lets us
+// tell "updated" apart from "RLS silently matched zero rows" (wrong id, or
+// someone else's task), which a bare update-with-no-error would otherwise hide.
+export async function toggleTaskAction(
+  taskId: string,
+  completed: boolean,
+): Promise<ToggleTaskResult> {
+  const supabase = createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, error: "Your session expired. Please sign in again." };
+  }
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .update({ completed_at: completed ? new Date().toISOString() : null })
+    .eq("id", taskId)
+    .select("id");
+
+  if (error) {
+    console.error("Toggling task failed", error);
+    return { ok: false, error: "Could not update task. Please try again." };
+  }
+
+  if (!data || data.length === 0) {
+    return { ok: false, error: "Task not found." };
+  }
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
